@@ -1,6 +1,17 @@
-"""sqlsift — Detect slow queries and generate optimization suggestions from query logs."""
+"""sqlsift — Detect slow queries and generate optimization suggestions."""
 
-from sqlsift.parser import QueryEntry, parse_line, parse_log
+from sqlsift.parser import QueryEntry, parse_log
+from sqlsift.analyzer import AnalysisResult, analyze_entries
+from sqlsift.reporter import Report, build_report, format_report
+from sqlsift.exporter import export_results
 
-__version__ = "0.1.0"
-__all__ = ["QueryEntry", "parse_line", "parse_log"]
+__all__ = [
+    "QueryEntry",
+    "parse_log",
+    "AnalysisResult",
+    "analyze_entries",
+    "Report",
+    "build_report",
+    "format_report",
+    "export_results",
+]
