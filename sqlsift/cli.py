@@ -34,20 +34,29 @@ def create_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _read_log_file(log_path: Path) -> str | None:
+    """Read the log file and return its contents, or None on failure.
+
+    Prints an error message to stderr and returns None if the file does not
+    exist or cannot be read.
+    """
+    if not log_path.exists():
+        print(f"Error: file not found: {log_path}", file=sys.stderr)
+        return None
+    try:
+        return log_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"Error reading file: {exc}", file=sys.stderr)
+        return None
+
+
 def run(argv=None) -> int:
     """Entry point for the CLI. Returns an exit code."""
     arg_parser = create_parser()
     args = arg_parser.parse_args(argv)
 
-    log_path: Path = args.logfile
-    if not log_path.exists():
-        print(f"Error: file not found: {log_path}", file=sys.stderr)
-        return 1
-
-    try:
-        raw_text = log_path.read_text(encoding="utf-8")
-    except OSError as exc:
-        print(f"Error reading file: {exc}", file=sys.stderr)
+    raw_text = _read_log_file(args.logfile)
+    if raw_text is None:
         return 1
 
     entries = parse_log(raw_text)
