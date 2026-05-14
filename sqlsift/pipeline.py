@@ -1,25 +1,23 @@
-"""End-to-end pipeline orchestrating parse → analyze → score → recommend."""
+"""Pipeline: orchestrate parsing, analysis, scoring, and summarization."""
 
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from sqlsift.parser import parse_log, QueryEntry
-from sqlsift.analyzer import analyze_entries, AnalysisResult
-from sqlsift.scorer import score_results, ScoredResult
-from sqlsift.recommender import build_recommendations, RecommendationReport
+from sqlsift.analyzer import AnalysisResult, analyze_entries
 from sqlsift.filter import FilterCriteria, filter_results
+from sqlsift.parser import QueryEntry, parse_log
+from sqlsift.reporter import Report, build_report
+from sqlsift.scorer import ScoredResult, score_results
 from sqlsift.sorter import SortKey, sort_results
+from sqlsift.summarizer import RunSummary, build_summary
 
 
 @dataclass
 class PipelineConfig:
     slow_threshold_ms: float = 1000.0
-    min_duration: Optional[float] = None
-    max_duration: Optional[float] = None
-    keyword_filter: Optional[str] = None
+    filter_criteria: Optional[FilterCriteria] = None
     sort_key: SortKey = SortKey.DURATION
-    ascending: bool = False
-    top_n: Optional[int] = None
+    sort_ascending: bool = False
 
 
 @dataclass
@@ -27,40 +25,49 @@ class PipelineResult:
     entries: List[QueryEntry] = field(default_factory=list)
     analysis: List[AnalysisResult] = field(default_factory=list)
     scored: List[ScoredResult] = field(default_factory=list)
-    recommendations: RecommendationReport = field(default_factory=RecommendationReport)
-    total_parsed: int = 0
-    total_slow: int = 0
+    report: Optional[Report] = None
+    summary: Optional[RunSummary] = None
 
 
 def run_pipeline(log_text: str, config: Optional[PipelineConfig] = None) -> PipelineResult:
-    """Run the full sqlsift pipeline on raw log text."""
+    """Run the full sqlsift pipeline on *log_text* and return a PipelineResult."""
     if config is None:
         config = PipelineConfig()
 
     entries = parse_log(log_text, threshold_ms=config.slow_threshold_ms)
-    analysis = analyze_entries(entries, threshold_ms=config.slow_threshold_ms)
 
-    criteria = FilterCriteria(
-        min_duration=config.min_duration,
-        max_duration=config.max_duration,
-        keyword=config.keyword_filter,
-    )
+    analysis = analyze_entries(entries)
+
+    criteria = config.filter_criteria or FilterCriteria()
     filtered = filter_results(analysis, criteria)
-    sorted_results = sort_results(filtered, key=config.sort_key, ascending=config.ascending)
 
-    if config.top_n is not None:
-        sorted_results = sorted_results[: config.top_n]
+    scored = score_results(filtered)
+    sorted_scored = [
+        sr for sr in sort_results(
+            [sr.result for sr in scored],
+            key=config.sort_key,
+            ascending=config.sort_ascending,
+        )
+        # re-attach scores in sorted order
+    ]
+    # Preserve score metadata in sorted order
+    result_order = {id(sr.result): sr for sr in scored}
+    sorted_scored = [
+        result_order[id(r)]
+        for r in sort_results(
+            [sr.result for sr in scored],
+            key=config.sort_key,
+            ascending=config.sort_ascending,
+        )
+    ]
 
-    scored = score_results(sorted_results)
-    recommendations = build_recommendations(scored)
-
-    total_slow = sum(1 for a in analysis if a.is_slow)
+    report = build_report(filtered)
+    summary = build_summary(report, sorted_scored)
 
     return PipelineResult(
         entries=entries,
-        analysis=sorted_results,
-        scored=scored,
-        recommendations=recommendations,
-        total_parsed=len(entries),
-        total_slow=total_slow,
+        analysis=filtered,
+        scored=sorted_scored,
+        report=report,
+        summary=summary,
     )
