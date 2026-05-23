@@ -54,7 +54,10 @@ def export_results(results: List[AnalysisResult], fmt: str = "json") -> str:
 
     Raises:
         ValueError: If an unsupported format is requested.
+        TypeError: If results is not a list.
     """
+    if not isinstance(results, list):
+        raise TypeError(f"Expected a list of AnalysisResult objects, got {type(results).__name__!r}.")
     fmt = fmt.lower()
     if fmt == "json":
         return export_json(results)
